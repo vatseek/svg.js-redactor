@@ -55,8 +55,9 @@
 	__webpack_require__(3);
 	__webpack_require__(4);
 	__webpack_require__(5);
-	const draw = SVG('drawing').size(500, 500);
-	draw.attr({ fill: '#f06' }).rect(50, 50).draggable();
+	const draw = SVG('drawing').size('100%', '100%');
+	const rect = draw.rect(50, 50).selectize({ svg_select_points_b: true }).resize();
+	rect.fill('#f06');
 
 /***/ },
 /* 2 */
