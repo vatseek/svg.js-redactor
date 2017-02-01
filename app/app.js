@@ -55,8 +55,22 @@
 	__webpack_require__(3);
 	__webpack_require__(4);
 	__webpack_require__(5);
+	
+	const groupSelect = [];
+	
 	const draw = SVG('drawing').size('100%', '100%');
-	const rect = draw.rect(50, 50).selectize({ svg_select_points_b: true }).resize();
+	const rect = draw.rect(50, 50);
+	
+	rect.on('click', e => {
+	    e.stopPropagation();
+	    rect.selectize({ svg_select_points_b: true });
+	});
+	
+	SVG.on(window, 'click', () => {
+	    console.log('unclick');
+	});
+	
+	// const rect = draw.rect(50, 50).selectize({svg_select_points_b:true}).resize();
 	rect.fill('#f06');
 
 /***/ },
@@ -65,13 +79,13 @@
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/*!
 	* svg.js - A lightweight library for manipulating and animating SVG.
-	* @version 2.3.2
-	* http://www.svgjs.com
+	* @version 2.3.7
+	* https://svgdotjs.github.io/
 	*
-	* @copyright Wout Fierens <wout@woutfierens.com>
+	* @copyright Wout Fierens <wout@mick-wout.com>
 	* @license MIT
 	*
-	* BUILT: Tue Jun 21 2016 10:02:37 GMT+0200 (Mitteleuropäische Sommerzeit)
+	* BUILT: Sat Jan 14 2017 07:23:18 GMT+0100 (CET)
 	*/;
 	(function(root, factory) {
 	  if (true) {
@@ -307,8 +321,8 @@
 	}
 	
 	SVG.utils = {
-	    // Map function
-	    map: function(array, block) {
+	  // Map function
+	  map: function(array, block) {
 	    var i
 	      , il = array.length
 	      , result = []
@@ -319,16 +333,31 @@
 	    return result
 	  }
 	
+	  // Filter function
+	, filter: function(array, block) {
+	    var i
+	      , il = array.length
+	      , result = []
+	
+	    for (i = 0; i < il; i++)
+	      if (block(array[i]))
+	        result.push(array[i])
+	
+	    return result
+	  }
+	
 	  // Degrees to radians
 	, radians: function(d) {
 	    return d % 360 * Math.PI / 180
 	  }
+	
 	  // Radians to degrees
 	, degrees: function(r) {
 	    return r * 180 / Math.PI % 360
 	  }
-	, filterSVGElements: function(p) {
-	    return [].filter.call(p, function(el){ return el instanceof SVGElement })
+	
+	, filterSVGElements: function(nodes) {
+	    return this.filter( nodes, function(el) { return el instanceof SVGElement })
 	  }
 	
 	}
@@ -598,19 +627,23 @@
 	  }
 	  // Parse point string
 	, parse: function(array) {
+	    var points = []
+	
 	    array = array.valueOf()
 	
 	    // if already is an array, no need to parse it
 	    if (Array.isArray(array)) return array
 	
-	    // split points
-	    array = this.split(array)
-	
 	    // parse points
-	    for (var i = 0, il = array.length, p, points = []; i < il; i++) {
-	      p = array[i].split(',')
-	      points.push([parseFloat(p[0]), parseFloat(p[1])])
-	    }
+	    array = array.trim().split(/\s+|,/)
+	
+	    // validate points - https://svgwg.org/svg2-draft/shapes.html#DataTypePoints
+	    // Odd number of coordinates is an error. In such cases, drop the last odd coordinate.
+	    if (array.length % 2 !== 0) array.pop()
+	
+	    // wrap points in two-tuples and parse points as floats
+	    for(var i = 0, len = array.length; i < len; i = i + 2)
+	      points.push([ parseFloat(array[i]), parseFloat(array[i+1]) ])
 	
 	    return points
 	  }
@@ -750,6 +783,63 @@
 	    }
 	
 	    return this
+	  }
+	  // Test if the passed path array use the same path data commands as this path array
+	, equalCommands: function(pathArray) {
+	    var i, il, equalCommands
+	
+	    pathArray = new SVG.PathArray(pathArray)
+	
+	    equalCommands = this.value.length === pathArray.value.length
+	    for(i = 0, il = this.value.length; equalCommands && i < il; i++) {
+	      equalCommands = this.value[i][0] === pathArray.value[i][0]
+	    }
+	
+	    return equalCommands
+	  }
+	  // Make path array morphable
+	, morph: function(pathArray) {
+	    pathArray = new SVG.PathArray(pathArray)
+	
+	    if(this.equalCommands(pathArray)) {
+	      this.destination = pathArray
+	    } else {
+	      this.destination = null
+	    }
+	
+	    return this
+	  }
+	  // Get morphed path array at given position
+	, at: function(pos) {
+	    // make sure a destination is defined
+	    if (!this.destination) return this
+	
+	    var sourceArray = this.value
+	      , destinationArray = this.destination.value
+	      , array = [], pathArray = new SVG.PathArray()
+	      , i, il, j, jl
+	
+	    // Animate has specified in the SVG spec
+	    // See: https://www.w3.org/TR/SVG11/paths.html#PathElement
+	    for (i = 0, il = sourceArray.length; i < il; i++) {
+	      array[i] = [sourceArray[i][0]]
+	      for(j = 1, jl = sourceArray[i].length; j < jl; j++) {
+	        array[i][j] = sourceArray[i][j] + (destinationArray[i][j] - sourceArray[i][j]) * pos
+	      }
+	      // For the two flags of the elliptical arc command, the SVG spec say:
+	      // Flags and booleans are interpolated as fractions between zero and one, with any non-zero value considered to be a value of one/true
+	      // Elliptical arc command as an array followed by corresponding indexes:
+	      // ['A', rx, ry, x-axis-rotation, large-arc-flag, sweep-flag, x, y]
+	      //   0    1   2        3                 4             5      6  7
+	      if(array[i][0] === 'A') {
+	        array[i][4] = +(array[i][4] != 0)
+	        array[i][5] = +(array[i][5] != 0)
+	      }
+	    }
+	
+	    // Directly modify the value of a path array, this is done this way for performance
+	    pathArray.value = array
+	    return pathArray
 	  }
 	  // Absolutize and parse path to array
 	, parse: function(array) {
@@ -892,6 +982,7 @@
 	  }
 	
 	})
+	
 	// Module for unit convertions
 	SVG.Number = SVG.invent({
 	  // Initialize
@@ -1050,7 +1141,7 @@
 	    }
 	    // Set element size to given width and height
 	  , size: function(width, height) {
-	      var p = proportionalSize(this.bbox(), width, height)
+	      var p = proportionalSize(this, width, height)
 	
 	      return this
 	        .width(new SVG.Number(p.width))
@@ -1286,7 +1377,9 @@
 	    this.finish = this.start + this.duration
 	    this.ease = o.ease
 	
-	    this.loop = false
+	    // this.loop is incremented from 0 to this.loops
+	    // it is also incremented when in an infinite loop (when this.loops is true)
+	    this.loop = 0
 	    this.loops = false
 	
 	    this.animations = {
@@ -1318,9 +1411,6 @@
 	
 	})
 	
-	SVG.Delay = function(delay){
-	  this.delay = new SVG.Number(delay).valueOf()
-	}
 	
 	SVG.FX = SVG.invent({
 	
@@ -1332,6 +1422,10 @@
 	    this.paused = false
 	    this.lastPos = 0
 	    this.pos = 0
+	    // The absolute position of an animation is its position in the context of its complete duration (including delay and loops)
+	    // When performing a delay, absPos is below 0 and when performing a loop, its value is above 1
+	    this.absPos = 0
+	    this._speed = 1
 	  }
 	
 	, extend: {
@@ -1368,14 +1462,20 @@
 	     * @return this.target()
 	     */
 	  , delay: function(delay){
-	      var delay = new SVG.Delay(delay)
+	      // The delay is performed by an empty situation with its duration
+	      // attribute set to the duration of the delay
+	      var situation = new SVG.Situation({
+	        duration: delay,
+	        delay: 0,
+	        ease: SVG.easing['-']
+	      })
 	
-	      return this.queue(delay)
+	      return this.queue(situation)
 	    }
 	
 	    /**
 	     * sets or returns the target of this animation
-	     * @param null || target SVG.Elemenet which should be set as new target
+	     * @param null || target SVG.Element which should be set as new target
 	     * @return target || this
 	     */
 	  , target: function(target){
@@ -1387,14 +1487,14 @@
 	      return this._target
 	    }
 	
-	    // returns the position at a given time
-	  , timeToPos: function(timestamp){
-	      return (timestamp - this.situation.start) / (this.situation.duration)
+	    // returns the absolute position at a given time
+	  , timeToAbsPos: function(timestamp){
+	      return (timestamp - this.situation.start) / (this.situation.duration/this._speed)
 	    }
 	
-	    // returns the timestamp from a given positon
-	  , posToTime: function(pos){
-	      return this.situation.duration * pos + this.situation.start
+	    // returns the timestamp from a given absolute positon
+	  , absPosToTime: function(absPos){
+	      return this.situation.duration/this._speed * absPos + this.situation.start
 	    }
 	
 	    // starts the animationloop
@@ -1408,19 +1508,22 @@
 	      cancelAnimationFrame(this.animationFrame)
 	    }
 	
-	    // kicks off the animation - only does something when the queue is curretly not active and at least one situation is set
+	    // kicks off the animation - only does something when the queue is currently not active and at least one situation is set
 	  , start: function(){
 	      // dont start if already started
 	      if(!this.active && this.situation){
-	        this.situation.start = +new Date + this.situation.delay
-	        this.situation.finish = this.situation.start + this.situation.duration
-	
-	        this.initAnimations()
 	        this.active = true
-	        this.startAnimFrame()
+	        this.startCurrent()
 	      }
 	
 	      return this
+	    }
+	
+	    // start the current situation
+	  , startCurrent: function(){
+	      this.situation.start = +new Date + this.situation.delay/this._speed
+	      this.situation.finish = this.situation.start + this.situation.duration/this._speed
+	      return this.initAnimations().step()
 	    }
 	
 	    /**
@@ -1429,7 +1532,7 @@
 	     * @return this
 	     */
 	  , queue: function(fn){
-	      if(typeof fn == 'function' || fn instanceof SVG.Situation || fn instanceof SVG.Delay)
+	      if(typeof fn == 'function' || fn instanceof SVG.Situation)
 	        this.situations.push(fn)
 	
 	      if(!this.situation) this.situation = this.situations.shift()
@@ -1449,23 +1552,12 @@
 	      this.situation = this.situations.shift()
 	
 	      if(this.situation){
-	
-	        var fn = function(){
-	          if(this.situation instanceof SVG.Situation)
-	            this.initAnimations().at(0)
-	          else if(this.situation instanceof SVG.Delay)
-	            this.dequeue()
-	          else
-	            this.situation.call(this)
-	        }.bind(this)
-	
-	        // start next animation
-	        if(this.situation.delay){
-	          setTimeout(function(){fn()}, this.situation.delay)
-	        }else{
-	          fn()
+	        if(this.situation instanceof SVG.Situation) {
+	          this.startCurrent()
+	        } else {
+	          // If it is not a SVG.Situation, then it is a function, we execute it
+	          this.situation.call(this)
 	        }
-	
 	      }
 	
 	      return this
@@ -1543,19 +1635,10 @@
 	      this.active = false
 	
 	      if(jumpToEnd && this.situation){
-	
-	        this.situation.loop = false
-	
-	        if(this.situation.loops % 2 == 0 && this.situation.reversing){
-	          this.situation.reversed = true
-	        }
-	
-	        this.at(1)
-	
+	        this.atEnd()
 	      }
 	
 	      this.stopAnimFrame()
-	      clearTimeout(this.timeout)
 	
 	      return this.clearCurrent()
 	    }
@@ -1568,7 +1651,7 @@
 	        var temp = this.situation
 	        this.stop()
 	        this.situation = temp
-	        this.at(0)
+	        this.atStart()
 	      }
 	      return this
 	    }
@@ -1585,27 +1668,67 @@
 	      return this
 	    }
 	
+	    // set the internal animation pointer at the start position, before any loops, and updates the visualisation
+	  , atStart: function() {
+	    return this.at(0, true)
+	  }
+	
+	    // set the internal animation pointer at the end position, after all the loops, and updates the visualisation
+	  , atEnd: function() {
+	    if (this.situation.loops === true) {
+	      // If in a infinite loop, we end the current iteration
+	      return this.at(this.situation.loop+1, true)
+	    } else if(typeof this.situation.loops == 'number') {
+	      // If performing a finite number of loops, we go after all the loops
+	      return this.at(this.situation.loops, true)
+	    } else {
+	      // If no loops, we just go at the end
+	      return this.at(1, true)
+	    }
+	  }
+	
 	    // set the internal animation pointer to the specified position and updates the visualisation
-	  , at: function(pos){
-	      this.pos = pos
-	      this.situation.start = +new Date - pos * this.situation.duration
-	      this.situation.finish = this.situation.start + this.situation.duration
+	    // if isAbsPos is true, pos is treated as an absolute position
+	  , at: function(pos, isAbsPos){
+	      var durDivSpd = this.situation.duration/this._speed
+	
+	      this.absPos = pos
+	      // If pos is not an absolute position, we convert it into one
+	      if (!isAbsPos) {
+	        if (this.situation.reversed) this.absPos = 1 - this.absPos
+	        this.absPos += this.situation.loop
+	      }
+	
+	      this.situation.start = +new Date - this.absPos * durDivSpd
+	      this.situation.finish = this.situation.start + durDivSpd
+	
 	      return this.step(true)
 	    }
 	
-	    // speeds up the animation by the given factor
-	    // this changes the duration of the animation
+	    /**
+	     * sets or returns the speed of the animations
+	     * @param speed null || Number The new speed of the animations
+	     * @return Number || this
+	     */
 	  , speed: function(speed){
-	      this.situation.duration = this.situation.duration * this.pos + (1-this.pos) * this.situation.duration / speed
-	      this.situation.finish = this.situation.start + this.situation.duration
-	      return this.at(this.pos)
+	      if (speed === 0) return this.pause()
+	
+	      if (speed) {
+	        this._speed = speed
+	        // We use an absolute position here so that speed can affect the delay before the animation
+	        return this.at(this.absPos, true)
+	      } else return this._speed
 	    }
+	
 	    // Make loopable
 	  , loop: function(times, reverse) {
-	      // store current loop and total loops
-	      this.situation.loop = this.situation.loops = times || true
+	      var c = this.last()
 	
-	      if(reverse) this.last().reversing = true
+	      // store total loops
+	      c.loops = (times != null) ? times : true
+	      c.loop = 0
+	
+	      if(reverse) c.reversing = true
 	      return this
 	    }
 	
@@ -1613,7 +1736,7 @@
 	  , pause: function(){
 	      this.paused = true
 	      this.stopAnimFrame()
-	      clearTimeout(this.timeout)
+	
 	      return this
 	    }
 	
@@ -1621,7 +1744,8 @@
 	  , play: function(){
 	      if(!this.paused) return this
 	      this.paused = false
-	      return this.at(this.pos)
+	      // We use an absolute position here so that the delay before the animation can be paused
+	      return this.at(this.absPos, true)
 	    }
 	
 	    /**
@@ -1726,22 +1850,45 @@
 	     */
 	  , step: function(ignoreTime){
 	
-	      // convert current time to position
-	      if(!ignoreTime) this.pos = this.timeToPos(+new Date)
+	      // convert current time to an absolute position
+	      if(!ignoreTime) this.absPos = this.timeToAbsPos(+new Date)
 	
-	      if(this.pos >= 1 && (this.situation.loop === true || (typeof this.situation.loop == 'number' && --this.situation.loop))){
+	      // This part convert an absolute position to a position
+	      if(this.situation.loops !== false) {
+	        var absPos, absPosInt, lastLoop
 	
-	        if(this.situation.reversing){
-	          this.situation.reversed = !this.situation.reversed
+	        // If the absolute position is below 0, we just treat it as if it was 0
+	        absPos = Math.max(this.absPos, 0)
+	        absPosInt = Math.floor(absPos)
+	
+	        if(this.situation.loops === true || absPosInt < this.situation.loops) {
+	          this.pos = absPos - absPosInt
+	          lastLoop = this.situation.loop
+	          this.situation.loop = absPosInt
+	        } else {
+	          this.absPos = this.situation.loops
+	          this.pos = 1
+	          // The -1 here is because we don't want to toggle reversed when all the loops have been completed
+	          lastLoop = this.situation.loop - 1
+	          this.situation.loop = this.situation.loops
 	        }
-	        return this.at(this.pos-1)
+	
+	        if(this.situation.reversing) {
+	          // Toggle reversed if an odd number of loops as occured since the last call of step
+	          this.situation.reversed = this.situation.reversed != Boolean((this.situation.loop - lastLoop) % 2)
+	        }
+	
+	      } else {
+	        // If there are no loop, the absolute position must not be above 1
+	        this.absPos = Math.min(this.absPos, 1)
+	        this.pos = this.absPos
 	      }
+	
+	      // while the absolute position can be below 0, the position must not be below 0
+	      if(this.pos < 0) this.pos = 0
 	
 	      if(this.situation.reversed) this.pos = 1 - this.pos
 	
-	      // correct position
-	      if(this.pos > 1)this.pos = 1
-	      if(this.pos < 0)this.pos = 0
 	
 	      // apply easing
 	      var eased = this.situation.ease(this.pos)
@@ -1804,7 +1951,7 @@
 	      for(i in s.animations){
 	
 	        at = [].concat(s.animations[i]).map(function(el){
-	          return el.at ? el.at(s.ease(self.pos), self.pos) : el
+	          return typeof el !== 'string' && el.at ? el.at(s.ease(self.pos), self.pos) : el
 	        })
 	
 	        target[i].apply(target, at)
@@ -1815,7 +1962,7 @@
 	      for(i in s.attrs){
 	
 	        at = [i].concat(s.attrs[i]).map(function(el){
-	          return el.at ? el.at(s.ease(self.pos), self.pos) : el
+	          return typeof el !== 'string' && el.at ? el.at(s.ease(self.pos), self.pos) : el
 	        })
 	
 	        target.attr.apply(target, at)
@@ -1826,7 +1973,7 @@
 	      for(i in s.styles){
 	
 	        at = [i].concat(s.styles[i]).map(function(el){
-	          return el.at ? el.at(s.ease(self.pos), self.pos) : el
+	          return typeof el !== 'string' && el.at ? el.at(s.ease(self.pos), self.pos) : el
 	        })
 	
 	        target.style.apply(target, at)
@@ -1836,9 +1983,9 @@
 	      // animate initialTransformation which has to be chained
 	      if(s.transforms.length){
 	
-	        // get inital initialTransformation
+	        // get initial initialTransformation
 	        at = s.initialTransformation
-	        for(i in s.transforms){
+	        for(i = 0, len = s.transforms.length; i < len; i++){
 	
 	          // get next transformation in chain
 	          var a = s.transforms[i]
@@ -1847,7 +1994,7 @@
 	          if(a instanceof SVG.Matrix){
 	
 	            if(a.relative){
-	              at = at.multiply(a.at(s.ease(this.pos)))
+	              at = at.multiply(new SVG.Matrix().morph(a).at(s.ease(this.pos)))
 	            }else{
 	              at = at.morph(a).at(s.ease(this.pos))
 	            }
@@ -1918,6 +2065,16 @@
 	  , play: function() {
 	      if (this.fx)
 	        this.fx.play()
+	
+	      return this
+	    }
+	    // Set/Get the speed of the animations
+	  , speed: function(speed) {
+	      if (this.fx)
+	        if (speed == null)
+	          return this.fx.speed()
+	        else
+	          this.fx.speed(speed)
 	
 	      return this
 	    }
@@ -2080,6 +2237,7 @@
 	    return this
 	  }
 	})
+	
 	SVG.BBox = SVG.invent({
 	  // Initialize
 	  create: function(element) {
@@ -2097,7 +2255,7 @@
 	        box = element.node.getBBox()
 	      } catch(e) {
 	        if(element instanceof SVG.Shape){
-	          var clone = element.clone(SVG.parser.draw)
+	          var clone = element.clone(SVG.parser.draw).show()
 	          box = clone.bbox()
 	          clone.remove()
 	        }else{
@@ -2364,12 +2522,13 @@
 	    }
 	    // Scale matrix
 	  , scale: function(x, y, cx, cy) {
-	      // support universal scale
-	      if (arguments.length == 1 || arguments.length == 3)
+	      // support uniformal scale
+	      if (arguments.length == 1) {
 	        y = x
-	      if (arguments.length == 3) {
+	      } else if (arguments.length == 3) {
 	        cy = cx
 	        cx = y
+	        y = x
 	      }
 	
 	      return this.around(cx, cy, new SVG.Matrix(x, 0, 0, y, 0, 0))
@@ -2387,15 +2546,28 @@
 	    }
 	    // Skew
 	  , skew: function(x, y, cx, cy) {
-	      return this.around(cx, cy, this.native().skewX(x || 0).skewY(y || 0))
+	      // support uniformal skew
+	      if (arguments.length == 1) {
+	        y = x
+	      } else if (arguments.length == 3) {
+	        cy = cx
+	        cx = y
+	        y = x
+	      }
+	
+	      // convert degrees to radians
+	      x = SVG.utils.radians(x)
+	      y = SVG.utils.radians(y)
+	
+	      return this.around(cx, cy, new SVG.Matrix(1, Math.tan(y), Math.tan(x), 1, 0, 0))
 	    }
 	    // SkewX
 	  , skewX: function(x, cx, cy) {
-	      return this.around(cx, cy, this.native().skewX(x || 0))
+	      return this.skew(x, 0, cx, cy)
 	    }
 	    // SkewY
 	  , skewY: function(y, cx, cy) {
-	      return this.around(cx, cy, this.native().skewY(y || 0))
+	      return this.skew(0, y, cx, cy)
 	    }
 	    // Transform around a center point
 	  , around: function(cx, cy, matrix) {
@@ -2449,8 +2621,8 @@
 	      {x:x[0], y:x[1]} :
 	    typeof x === 'object' ?
 	      {x:x.x, y:x.y} :
-	    y != null ?
-	      {x:x, y:y} : base
+	    x != null ?
+	      {x:x, y:(y != null ? y : x)} : base // If y has no value, then x is used has its value
 	
 	    // merge source
 	    this.x = source.x
@@ -2464,9 +2636,9 @@
 	      return new SVG.Point(this)
 	    }
 	    // Morph one point into another
-	  , morph: function(point) {
+	  , morph: function(x, y) {
 	      // store new destination
-	      this.destination = new SVG.Point(point)
+	      this.destination = new SVG.Point(x, y)
 	
 	      return this
 	    }
@@ -2655,13 +2827,13 @@
 	      matrix = matrix.scale(o.scaleX, o.scaleY, o.cx, o.cy)
 	
 	    // act on skew
-	    } else if (o.skewX != null || o.skewY != null) {
+	    } else if (o.skew != null || o.skewX != null || o.skewY != null) {
 	      // ensure centre point
 	      ensureCentre(o, target)
 	
 	      // ensure skew values on both axes
-	      o.skewX = o.skewX != null ? o.skewX : 0
-	      o.skewY = o.skewY != null ? o.skewY : 0
+	      o.skewX = o.skew != null ? o.skew : o.skewX != null ? o.skewX : 0
+	      o.skewY = o.skew != null ? o.skew : o.skewY != null ? o.skewY : 0
 	
 	      if (!relative) {
 	        // absolute; reset skew values
@@ -2779,7 +2951,7 @@
 	
 	    var matrix = (this.attr('transform') || '')
 	      // split transformations
-	      .split(/\)\s*/).slice(0,-1).map(function(str){
+	      .split(/\)\s*,?\s*/).slice(0,-1).map(function(str){
 	        // generate key => value pairs
 	        var kv = str.trim().split('(')
 	        return [kv[0], kv[1].split(SVG.regex.matrixElements).map(function(str){ return parseFloat(str) })]
@@ -2863,6 +3035,12 @@
 	      for(var i = 0, len = this.arguments.length; i < len; ++i){
 	        o[this.arguments[i]] = typeof this[this.arguments[i]] == 'undefined' ? 0 : o[this.arguments[i]]
 	      }
+	
+	      // The method SVG.Matrix.extract which was used before calling this
+	      // method to obtain a value for the parameter o doesn't return a cx and
+	      // a cy so we use the ones that were provided to this object at its creation
+	      o.cx = this.cx
+	      o.cy = this.cy
 	
 	      this._undo = new SVG[capitalize(this.method)](o, true).at(1)
 	
@@ -3000,13 +3178,10 @@
 	    }
 	    // Add given element at a position
 	  , add: function(element, i) {
-	      if (!this.has(element)) {
-	        // define insertion index if none given
-	        i = i == null ? this.children().length : i
-	
-	        // add element references
-	        this.node.insertBefore(element.node, SVG.utils.filterSVGElements(this.node.childNodes)[i] || null)
-	      }
+	      if (i == null)
+	        this.node.appendChild(element.node)
+	      else if (element.node != this.node.childNodes[i])
+	        this.node.insertBefore(element.node, this.node.childNodes[i])
 	
 	      return this
 	    }
@@ -3021,19 +3196,19 @@
 	    }
 	    // Gets index of given element
 	  , index: function(element) {
-	      return this.children().indexOf(element)
+	      return [].slice.call(this.node.childNodes).indexOf(element.node)
 	    }
 	    // Get a element at the given index
 	  , get: function(i) {
-	      return this.children()[i]
+	      return SVG.adopt(this.node.childNodes[i])
 	    }
-	    // Get first child, skipping the defs node
+	    // Get first child
 	  , first: function() {
-	      return this.children()[0]
+	      return this.get(0)
 	    }
 	    // Get the last child
 	  , last: function() {
-	      return this.children()[this.children().length - 1]
+	      return this.get(this.node.childNodes.length - 1)
 	    }
 	    // Iterates over all children and invokes a given block
 	  , each: function(block, deep) {
@@ -4076,7 +4251,7 @@
 	    }
 	    // Custom size function
 	  , size: function(width, height) {
-	      var p = proportionalSize(this.bbox(), width, height)
+	      var p = proportionalSize(this, width, height)
 	
 	      return this
 	        .rx(new SVG.Number(p.width).divide(2))
@@ -4114,7 +4289,7 @@
 	    }
 	    // Set element size to given width and height
 	  , size: function(width, height) {
-	      var p = proportionalSize(this.bbox(), width, height)
+	      var p = proportionalSize(this, width, height)
 	
 	      return this.attr(this.array().size(p.width, p.height).toLine())
 	    }
@@ -4177,7 +4352,7 @@
 	  }
 	  // Set element size to given width and height
 	, size: function(width, height) {
-	    var p = proportionalSize(this.bbox(), width, height)
+	    var p = proportionalSize(this, width, height)
 	
 	    return this.attr('points', this.array().size(p.width, p.height))
 	  }
@@ -4241,7 +4416,7 @@
 	    }
 	    // Set element size to given width and height
 	  , size: function(width, height) {
-	      var p = proportionalSize(this.bbox(), width, height)
+	      var p = proportionalSize(this, width, height)
 	
 	      return this.attr('d', this.array().size(p.width, p.height))
 	    }
@@ -4304,11 +4479,22 @@
 	          })
 	      }
 	
+	      img.onerror = function(e){
+	        if (typeof self._error === 'function'){
+	            self._error.call(self, e)
+	        }
+	      }
+	
 	      return this.attr('href', (img.src = this.src = url), SVG.xlink)
 	    }
 	    // Add loaded callback
 	  , loaded: function(loaded) {
 	      this._loaded = loaded
+	      return this
+	    }
+	
+	  , error: function(error) {
+	      this._error = error
 	      return this
 	    }
 	  }
@@ -4340,17 +4526,8 @@
 	
 	  // Add class methods
 	, extend: {
-	    clone: function(){
-	      // clone element and assign new id
-	      var clone = assignNewId(this.node.cloneNode(true))
-	
-	      // insert the clone after myself
-	      this.after(clone)
-	
-	      return clone
-	    }
 	    // Move over x-axis
-	  , x: function(x) {
+	    x: function(x) {
 	      // act as getter
 	      if (x == null)
 	        return this.attr('x')
@@ -4798,6 +4975,8 @@
 	  var i, extension = {}
 	
 	  extension[m] = function(o) {
+	    if (typeof o == 'undefined')
+	      return this
 	    if (typeof o == 'string' || SVG.Color.isRgb(o) || (o && typeof o.fill === 'function'))
 	      this.attr(m, o)
 	
@@ -4821,7 +5000,9 @@
 	  }
 	  // Map skew to transform
 	, skew: function(x, y, cx, cy) {
-	    return this.transform({ skewX: x, skewY: y, cx: cx, cy: cy })
+	    return arguments.length == 1  || arguments.length == 3 ?
+	      this.transform({ skew: x, cx: y, cy: cx }) :
+	      this.transform({ skewX: x, skewY: y, cx: cx, cy: cy })
 	  }
 	  // Map scale to transform
 	, scale: function(x, y, cx, cy) {
@@ -4895,7 +5076,6 @@
 	    return this
 	  }
 	})
-	
 	
 	SVG.Set = SVG.invent({
 	  // Initialize
@@ -5176,11 +5356,15 @@
 	}
 	
 	// Calculate proportional width and height values when necessary
-	function proportionalSize(box, width, height) {
-	  if (height == null)
-	    height = box.height / box.width * width
-	  else if (width == null)
-	    width = box.width / box.height * height
+	function proportionalSize(element, width, height) {
+	  if (width == null || height == null) {
+	    var box = element.bbox()
+	
+	    if (width == null)
+	      width = box.width / box.height * height
+	    else if (height == null)
+	      height = box.height / box.width * width
+	  }
 	
 	  return {
 	    width:  width
@@ -5370,7 +5554,7 @@
 /* 3 */
 /***/ function(module, exports) {
 
-	/*! svg.draggable.js - v2.2.0 - 2016-05-21
+	/*! svg.draggable.js - v2.2.1 - 2016-08-25
 	* https://github.com/wout/svg.draggable.js
 	* Copyright (c) 2016 Wout Fierens; Licensed MIT */
 	;(function() {
@@ -5459,7 +5643,8 @@
 	    this.startPoints = {
 	      // We take absolute coordinates since we are just using a delta here
 	      point: this.transformPoint(e, anchorOffset),
-	      box:   box
+	      box:   box,
+	      transform: this.el.transform()
 	    }
 	    
 	    // add drag and end events to window
@@ -5486,7 +5671,9 @@
 	      , x   = this.startPoints.box.x + p.x - this.startPoints.point.x
 	      , y   = this.startPoints.box.y + p.y - this.startPoints.point.y
 	      , c   = this.constraint
-	
+	      , gx  = p.x - this.startPoints.point.x
+	      , gy  = p.y - this.startPoints.point.y
+	      
 	    var event = new CustomEvent('dragmove', {
 	        detail: {
 	            event: e
@@ -5538,8 +5725,11 @@
 	        y = c.minY
 	      else if (c.maxY != null && y > c.maxY - box.height)
 	        y = c.maxY - box.height
-	
-	      this.el.move(x, y)
+	        
+	      if(this.el instanceof SVG.G)
+	        this.el.matrix(this.startPoints.transform).transform({x:gx, y: gy}, true)
+	      else
+	        this.el.move(x, y)
 	    }
 	    
 	    // so we can use it in the end-method, too
@@ -5913,7 +6103,7 @@
 /* 5 */
 /***/ function(module, exports) {
 
-	/*! svg.resize.js - v1.1.1 - 2016-03-07
+	/*! svg.resize.js - v1.4.0 - 2016-09-15
 	* https://github.com/Fuzzyma/svg.resize.js
 	* Copyright (c) 2016 Ulrich-Matthias Schäfer; Licensed MIT */
 	;(function () {
@@ -5935,6 +6125,15 @@
 	
 	        return this.p.matrixTransform(m || this.m);
 	
+	    };
+	
+	    ResizeHandler.prototype._extractPosition = function(event) {
+	        // Extract a position from a mouse/touch event.
+	        // Returns { x: .., y: .. }
+	        return {
+	            x: event.clientX || event.touches[0].pageX,
+	            y: event.clientY || event.touches[0].pageY
+	        };
 	    };
 	
 	    ResizeHandler.prototype.init = function (options) {
@@ -6002,9 +6201,10 @@
 	        this.m = this.el.node.getScreenCTM().inverse();
 	        this.offset = { x: window.pageXOffset, y: window.pageYOffset };
 	
+	        var txPt = this._extractPosition(event.detail.event);
 	        this.parameters = {
 	            type: this.el.type, // the type of element
-	            p: this.transformPoint(event.detail.event.clientX,event.detail.event.clientY),
+	            p: this.transformPoint(txPt.x, txPt.y),
 	            x: event.detail.x,      // x-position of the mouse when resizing started
 	            y: event.detail.y,      // y-position of the mouse when resizing started
 	            box: this.el.bbox(),    // The bounding-box of the element
@@ -6041,17 +6241,17 @@
 	                    // Now we check if the new height and width still valid (> 0)
 	                    if (this.parameters.box.width - snap[0] > 0 && this.parameters.box.height - snap[1] > 0) {
 	                        // ...if valid, we resize the this.el (which can include moving because the coord-system starts at the left-top and this edge is moving sometimes when resized)
-	                    
+	
 	                        /*
 	                         * but first check if the element is text box, so we can change the font size instead of
 	                         * the width and height
 	                         */
-	                        
+	
 	                        if (this.parameters.type === "text") {
 	                            this.el.move(this.parameters.box.x + snap[0], this.parameters.box.y);
 	                            this.el.attr("font-size", this.parameters.fontSize - snap[0]);
 	                            return;
-	                        }                    
+	                        }
 	
 	                        this.el.move(this.parameters.box.x + snap[0], this.parameters.box.y + snap[1]).size(this.parameters.box.width - snap[0], this.parameters.box.height - snap[1]);
 	                    }
@@ -6164,7 +6364,7 @@
 	                        if (this.parameters.type === "text") {
 	                            return;
 	                        }
-	                        
+	
 	                        this.el.move(this.parameters.box.x + snap[0], this.parameters.box.y).width(this.parameters.box.width - snap[0]);
 	                    }
 	                };
@@ -6180,7 +6380,7 @@
 	
 	                    // start minus middle
 	                    var sAngle = Math.atan2((this.parameters.p.y - this.parameters.box.y - this.parameters.box.height / 2), (this.parameters.p.x - this.parameters.box.x - this.parameters.box.width / 2));
-	                    
+	
 	                    // end minus middle
 	                    var pAngle = Math.atan2((current.y - this.parameters.box.y - this.parameters.box.height / 2), (current.x - this.parameters.box.x - this.parameters.box.width / 2));
 	
@@ -6212,13 +6412,22 @@
 	                };
 	        }
 	
+	        this.el.fire('resizestart', {dx: this.parameters.x, dy: this.parameters.y, event: event});
 	        // When resizing started, we have to register events for...
+	        // Touches.
+	        SVG.on(window, 'touchmove.resize', function(e) {
+	            _this.update(e || window.event);
+	        });
+	        SVG.on(window, 'touchend.resize', function() {
+	            _this.done();
+	        });
+	        // Mouse.
 	        SVG.on(window, 'mousemove.resize', function (e) {
 	            _this.update(e || window.event);
-	        });    // mousemove to keep track of the changes and...
+	        });
 	        SVG.on(window, 'mouseup.resize', function () {
 	            _this.done();
-	        });        // mouseup to know when resizing stops
+	        });
 	
 	    };
 	
@@ -6233,7 +6442,9 @@
 	        }
 	
 	        // Calculate the difference between the mouseposition at start and now
-	        var p = this.transformPoint(event.clientX, event.clientY);
+	        var txPt = this._extractPosition(event);
+	        var p = this.transformPoint(txPt.x, txPt.y);
+	
 	        var diffX = p.x - this.parameters.p.x,
 	            diffY = p.y - this.parameters.p.y;
 	
@@ -6241,6 +6452,9 @@
 	
 	        // Calculate the new position and height / width of the element
 	        this.calc(diffX, diffY);
+	
+	       // Emit an event to say we have changed.
+	        this.el.fire('resizing', {dx: diffX, dy: diffY, event: event});
 	    };
 	
 	    // Is called on mouseup.
@@ -6249,6 +6463,8 @@
 	        this.lastUpdateCall = null;
 	        SVG.off(window, 'mousemove.resize');
 	        SVG.off(window, 'mouseup.resize');
+	        SVG.off(window, 'touchmove.resize');
+	        SVG.off(window, 'touchend.resize');
 	        this.el.fire('resizedone');
 	    };
 	
@@ -6259,7 +6475,7 @@
 	        var temp;
 	
 	        // If `pointCoordsY` is given, a single Point has to be snapped (deepSelect). That's why we need a different temp-value
-	        if (pointCoordsY) {
+	        if (typeof pointCoordsY !== 'undefined') {
 	            // Note that flag = pointCoordsX in this case
 	            temp = [(flag + diffX) % this.options.snapToGrid, (pointCoordsY + diffY) % this.options.snapToGrid];
 	        } else {
@@ -6268,10 +6484,49 @@
 	            temp = [(this.parameters.box.x + diffX + (flag & 1 ? 0 : this.parameters.box.width)) % this.options.snapToGrid, (this.parameters.box.y + diffY + (flag & (1 << 1) ? 0 : this.parameters.box.height)) % this.options.snapToGrid];
 	        }
 	
-	        diffX -= (Math.abs(temp[0]) < this.options.snapToGrid / 2 ? temp[0] : temp[0] - this.options.snapToGrid) + (temp[0] < 0 ? this.options.snapToGrid : 0);
-	        diffY -= (Math.abs(temp[1]) < this.options.snapToGrid / 2 ? temp[1] : temp[1] - this.options.snapToGrid) + (temp[1] < 0 ? this.options.snapToGrid : 0);
-	        return [diffX, diffY];
 	
+	        diffX -= (Math.abs(temp[0]) < this.options.snapToGrid / 2 ?
+	                  temp[0] :
+	                  temp[0] - (diffX < 0 ? -this.options.snapToGrid : this.options.snapToGrid));
+	        diffY -= (Math.abs(temp[1]) < this.options.snapToGrid / 2 ?
+	                  temp[1] :
+	                  temp[1] - (diffY < 0 ? -this.options.snapToGrid : this.options.snapToGrid));
+	
+	        return this.constraintToBox(diffX, diffY, flag, pointCoordsY);
+	
+	    };
+	
+	    // keep element within constrained box
+	    ResizeHandler.prototype.constraintToBox = function (diffX, diffY, flag, pointCoordsY) {
+	        //return [diffX, diffY]
+	        var c = this.options.constraint || {};
+	        var orgX, orgY;
+	
+	        if (typeof pointCoordsY !== 'undefined') {
+	          orgX = flag;
+	          orgY = pointCoordsY;
+	        } else {
+	          orgX = this.parameters.box.x + (flag & 1 ? 0 : this.parameters.box.width);
+	          orgY = this.parameters.box.y + (flag & (1<<1) ? 0 : this.parameters.box.height);
+	        }
+	
+	        if (typeof c.minX !== 'undefined' && orgX + diffX < c.minX) {
+	          diffX = c.minX - orgX;
+	        }
+	
+	        if (typeof c.maxX !== 'undefined' && orgX + diffX > c.maxX) {
+	          diffX = c.maxX - orgX;
+	        }
+	
+	        if (typeof c.minY !== 'undefined' && orgY + diffY < c.minY) {
+	          diffY = c.minY - orgY;
+	        }
+	
+	        if (typeof c.maxY !== 'undefined' && orgY + diffY > c.maxY) {
+	          diffY = c.maxY - orgY;
+	        }
+	
+	        return [diffX, diffY];
 	    };
 	
 	    SVG.extend(SVG.Element, {
@@ -6288,7 +6543,8 @@
 	
 	    SVG.Element.prototype.resize.defaults = {
 	        snapToAngle: 0.1,    // Specifies the speed the rotation is happening when moving the mouse
-	        snapToGrid: 1        // Snaps to a grid of `snapToGrid` Pixels
+	        snapToGrid: 1,       // Snaps to a grid of `snapToGrid` Pixels
+	        constraint: {}       // keep element within constrained box
 	    };
 	
 	}).call(this);
