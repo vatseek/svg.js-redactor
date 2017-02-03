@@ -31,7 +31,7 @@ class Rect {
     }
 }
 
-init = function() {
+window.init = function() {
     const view = document.getElementById('drawing');
     if (!view) {
         console.error('Invalid view id');
@@ -137,3 +137,5 @@ init = function() {
 
     window.paper = paper;
 };
+
+window.init();

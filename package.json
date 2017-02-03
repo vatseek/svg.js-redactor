@@ -9,9 +9,14 @@
   "author": "vatseek",
   "license": "ISC",
   "dependencies": {
+    "babel-polyfill": "^6.22.0",
+    "babel-preset-es2015": "^6.22.0",
+    "babel-preset-react": "^6.22.0",
+    "babel-preset-stage-0": "^6.22.0",
     "mouse": "0.0.1",
     "raphael": "^2.2.7",
-    "raphael-freetransform": "https://github.com/AliasIO/Raphael.FreeTransform.git"
+    "raphael-freetransform": "https://github.com/AliasIO/Raphael.FreeTransform.git",
+    "react": "^15.4.2"
   },
   "devDependencies": {
     "babel-core": "^6.10.4",
