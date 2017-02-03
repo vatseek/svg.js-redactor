@@ -7,12 +7,38 @@
 html, body {
     margin: 0;
     padding: 0;
+    background-color: #515151;
 }
+
+.toolbar {
+    height: 40px;
+}
+
+.toolbar .btn {
+    font-size: 28px;
+    color: #fff;
+    line-height: 40px;
+    display: inline-block;
+    height: 35px;
+    width: 40px;
+    text-align: center;
+    padding-top: 4px;
+    /*border-right: 1px solid #626262;*/
+}
+
+.toolbar .btn:hover {
+    background-color: #797979;
+}
+
+.toolbar .btn.separator {
+    margin-right: 18px;
+}
+
 #drawing {
     position: absolute;
     width:100%;
     top: 0;
     bottom: 0;
     background-color: #2B84D2;
-    margin-top: 45px;
+    margin-top: 40px;
 }
